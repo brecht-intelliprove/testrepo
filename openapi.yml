@@ -1,0 +1,1020 @@
+openapi: 3.0.0
+info:
+  title: IntelliProve API v1
+  description: >-
+    # Authentication
+
+
+    Use the `/login/` route to get your Access-Token from the API. The used
+    authentication algorithm is "Basic Authentication".
+
+
+    If a valid username and password are given, the API returns a JWT Token as
+    payload. Add this token as a HTTP "Access-Token" Header to all subsequent
+    API calls.
+
+
+    > ⏳ The token is valid for 24h. After this period, you should request a new
+    token.
+  version: 1.0.0
+servers:
+  - url: http://{{baseurl}}
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+tags:
+  - name: Metrics
+    description: >-
+      Use these routes to
+
+
+      *   Process videos and receive the estimated vital parameters
+
+      *   Save the metric results with the VAS score and notes
+
+      *   Get measurement history based on the patient ID or time of the
+      measurement
+
+      *   Delete a measurement from the history
+          
+
+      > To use these routes, a valid Access-Token should be added to the HTTP
+      header.
+  - name: Patients
+    description: >-
+      Use these routes to
+
+
+      *   Register a new patient with the personal data and return the patient
+      ID.
+
+      *   Get a single patient based on its id or insurance number
+
+      *   Get a list of all the patients that were registered with the current
+      user account with to option to provide a filter
+          
+
+      > To use these routes, a valid Access-Token should be added to the HTTP
+      header.
+  - name: Videos
+    description: "Use this route to upload and process a new video on the Cloud. After a while (±15s) the extracted vital parameters are send back via de API response.\n\n> To use these routes, a valid Access-Token should be added to the HTTP header.\n\n# Video requirements\n\n> To allow for a qualitative measurement of the biometric parameters from a video, we ask to meet the guidelines below 👇. Parameters marked with *required* must be met. Parameters marked with *optional* are recommended, but not obligated.\n\n##### 👉 Video Length: (required)\n\nThe recording length of the video should be at least 15 seconds and should not exceed a length of one minute. A video length of **30 seconds** is **recommended**.\n\n> A video length of 30 seconds provides a nice trade-off between accuracy and processing time.\n\n##### 👉 Frame rate: (required)\n\nThe video frame rate should at least be 30 fps and should not exceed 60 fps. The **recommended value** is a recording frame rate of **30 fps**.\n\n> Higher frame rates may lead to a marginal increase in accuracy, but exponentially increases upload and processing time.\n\n##### 👉 Video Resolution: (required)\n\nThe video resolution should be between 720p and 4K.\uFEFF We **recommend** a video resolution of **1080p**.\n\n> Higher video resolution will not lead to higher accuracy levels, but will increase upload and processing time.\n\n##### 👉 Video Codec: (required)\n\nVideos should be recorded using the commonly used **H.264** codec (also referred to as MPEG-4).\n\n> Other video codecs should not be used.\n\n##### 👉 Video Bit Rate: (optional)\n\nWhen recording a video, you may have the option to provide some video encoding settings. One of those settings is the *video bit rate.* To make sure we don't loose valid pixel data during the video encoding process, we **recommended** to set the video bit rate to **8Mbps** or slightly higher.\n\n> A value of 8Mbps is the standard video bit rate value for a 1080p video. Values above 16Mbps don't provide any significant changes in accuracy levels, but will increase upload times."
+paths:
+  /metrics:
+    put:
+      tags:
+        - Metrics
+      summary: Save metric
+      description: >-
+        When performing a measurement with the `/videos/process` call, the
+        results are not automatically saved as a metric. To explicitly save the
+        results for later usage (history graph, ...), you should call this PUT
+        method.
+
+
+        This method also allows you to save additional notes and also provides
+        the option to overwrite the calculated metrics with ground truth values
+        retrieved from external measuring equipment.
+
+
+        ## Input Values
+
+
+        ### JSON Body
+
+
+        *   `patient_id`: int, required -> duplicate of patient's unique index
+        (for security purposes)
+
+        *   `heart_rate`: int, optional -> Ground truth heart rate value
+
+        *   `respiratory_rate`: int, optional -> Ground truth respiratory rate
+        value
+
+        *   `spo2`: float, optional -> Ground truth spo2 value
+
+        *   `blood_pressure`:
+            *   `diastolic`: float, optional -> Ground truth systolic blood pressure value
+            *   `systolic`: float, optional -> Ground truth diastolic blood pressure value
+        *   `notes`: string, optional
+            
+
+        ## Output values
+
+
+        ### Error codes
+
+
+        *   HTTP 400 -> *Invalid input parameters*
+
+        *   HTTP 401 -> *Token is missing*, *Token is invalid* (expired)
+
+        *   HTTP 500 -> *Action failed*
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                patient_id: 2
+                heart_rate: 60
+                respiratory_rate: 13
+                spo2: 99
+                blood_pressure:
+                  diastolic: 90
+                  systolic: 120
+                notes: These are some extra notes you can add to the measurement.
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: integer
+          description: Metric ID of metric that needs to be updated
+          example: '26'
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: null
+        undefined:
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: Save metric for patient
+                  value: null
+                example-1:
+                  summary: Save metric with notes
+                  value: null
+    get:
+      tags:
+        - Metrics
+      summary: Get metrics with filter
+      description: >-
+        Use this GET method to fetch saved metrics from the database.
+
+
+        The JSON body of the API call describes a filter which can be used
+        separately or combined. You can also use pagination to load in the
+        metrics page by page.
+
+
+        ## Output Values
+
+
+        ### JSON Body
+
+
+        List of metric api models:
+
+
+        *   `metric_id`: int -> metric's unique index
+
+        *   `patient_id`: int -> duplicate of patient's unique index
+
+        *   `heart_rate`: int
+
+        *   `respiratory_rate`: int
+
+        *   `hrv`
+            *   `rmssd`: int
+            *   `baevsky_stress_index`: int
+            *   `sdnn`: int
+            *   `ans_index`: float
+            *   `sns_index`: float
+            *   `pns_index`: float
+            *   `morning_readiness`: float
+        *   `mental_index`: float
+
+        *   `notes`: string
+
+        *   `timestamp`: UTC timestamp, format "yyyy-MM-dd HH:mm:ss"
+            
+
+        ### Error codes
+
+
+        *   HTTP 400 -> *Invalid input parameters*
+
+        *   HTTP 401 -> *Token is missing*, *Token is invalid* (expired)
+
+        *   HTTP 500 -> *Action failed*
+      parameters:
+        - name: patient-id
+          in: query
+          schema:
+            type: integer
+          description: Only get the metrics for the specified patient
+          example: '2'
+        - name: customer-wide
+          in: query
+          schema:
+            type: boolean
+          description: Also include the metrics made by other users in the company
+          example: 'false'
+        - name: page
+          in: query
+          schema:
+            type: integer
+          description: Page index of results based on "Page Size" (Starts at "1")
+          example: '1'
+        - name: page-size
+          in: query
+          schema:
+            type: integer
+          description: Set maximum number of metrics in one page
+          example: '10'
+        - name: from
+          in: query
+          schema:
+            type: string
+          description: Only get the metrics after the specified timestamp
+          example: 2021-04-01 00:00
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                - metric_id: 25
+                  patient_id: 2
+                  heart_rate: 60
+                  respiratory_rate: 13
+                  hrv:
+                    rmssd: 200
+                    baevsky_stress_index: 8
+                    sdnn: 20
+                    ans_index: 4
+                    sns_index: 3
+                    pns_index: 2
+                    morning_readiness: 3
+                  mental_index: 8
+                  notes: These are some extra notes you can add to the measurement.
+                  timestamp: '2022-07-14 13:19:57'
+                - metric_id: 26
+                  patient_id: 2
+                  heart_rate: 60
+                  respiratory_rate: 13
+                  hrv:
+                    rmssd: 200
+                    baevsky_stress_index: 8
+                    sdnn: 20
+                    ans_index: 4
+                    sns_index: 3
+                    pns_index: 2
+                    morning_readiness: 3
+                  mental_index: 8
+                  notes: These are some extra notes you can add to the measurement.
+                  timestamp: '2022-07-14 13:20:02'
+    delete:
+      tags:
+        - Metrics
+      summary: Delete metric
+      description: |-
+        Use this DELETE method to delete a saved metric.
+
+        # Output values
+
+        ## Error codes
+
+        *   HTTP 401 -> *Token is missing*, *Token is invalid* (expired)
+        *   HTTP 404 -> *Metric not found*
+        *   HTTP 500 -> *Action failed*
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: integer
+          description: Id of the metric thats need to be deleted
+          example: '13'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/html; charset=utf-8
+            Content-Length:
+              schema:
+                type: integer
+                example: '0'
+            Server:
+              schema:
+                type: string
+                example: Werkzeug/1.0.1 Python/3.8.2
+            Date:
+              schema:
+                type: string
+                example: Thu, 06 May 2021 20:43:58 GMT
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: null
+  /patients:
+    post:
+      tags:
+        - Patients
+      summary: Register new/existing patient
+      description: >-
+        Register a patient with the patient's `insurance_nb` (national insurance
+        number) *or any other unique identifier*.
+
+
+        Besides this unique number, the `firstname`, `lastname`, `sex` and
+        `date_of_birth` should be given.
+
+
+        ## Input values
+
+
+        ### JSON Body
+
+
+        *   `firstname`: string, **required**
+
+        *   `lastname`: string, **required**
+
+        *   `insurance_nb`: string, **required**
+
+        *   `gender`: enum, **required**, values \[Male = 1, Female = 2, X = 3\]
+
+        *   `date_of_birth`: date, **required**, format "yyyy-MM-dd"
+            
+
+        ## Ouput values
+
+
+        ### JSON Body
+
+
+        *   `id`: int -> the unique id for the patient
+            
+
+        ### Error codes
+
+
+        *   HTTP 400 -> *Invalid input parameters*
+
+        *   HTTP 401 -> *Token is missing*, *Token is invalid* (expired)
+
+        *   HTTP 500 -> *Action failed*
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                firstname: IntelliProve
+                lastname: Demo2
+                insurance_nb: 654321-123.15
+                gender: 1
+                date_of_birth: '2021-04-01'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+            Content-Length:
+              schema:
+                type: integer
+                example: '9'
+            Server:
+              schema:
+                type: string
+                example: Werkzeug/1.0.1 Python/3.8.2
+            Date:
+              schema:
+                type: string
+                example: Wed, 05 May 2021 20:05:20 GMT
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                id: 1
+    get:
+      tags:
+        - Patients
+      summary: Get patient by id or insurance number
+      description: >-
+        Get a single patient based on the patient's id or insurance number. Only
+        the patients created with the current user account are yielded.
+
+
+        The result will also hold information of the last measurement. If the
+        `last_measurement` is set to `null` then this indicates that no previous
+        measurements were found for that patient.
+
+
+        ## Output values
+
+
+        ### JSON Body
+
+
+        Patient object:
+
+
+        *   `id`: int -> patient's unique index
+
+        *   `firstname`: string
+
+        *   `lastname`: string
+
+        *   `insurance_nb`: string
+
+        *   `gender`: enum, values \[Male = 1, Female = 2, X = 3\]
+
+        *   `date_of_birth`: date, format "yyyy-MM-dd"
+
+        *   `last_measurement`: Metric API model (cfr. `GET /metrics/`) or null
+            
+
+        ### Error codes
+
+
+        *   HTTP 401 -> *Token is missing*, *Token is invalid* (expired)
+
+        *   HTTP 404 -> *Not found*
+
+        *   HTTP 500 -> *Action failed*
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: integer
+          description: Patient ID of patient that should be retrieved.
+          example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+            Content-Length:
+              schema:
+                type: integer
+                example: '155'
+            Server:
+              schema:
+                type: string
+                example: Werkzeug/1.0.1 Python/3.8.2
+            Date:
+              schema:
+                type: string
+                example: Sat, 15 May 2021 12:26:31 GMT
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Get patient by id
+                  value:
+                    id: 1
+                    firstname: IntelliProve
+                    lastname: Demo
+                    insurance_nb: 654321-123.12
+                    gender: 1
+                    date_of_birth: '2021-04-01'
+                    last_measurement:
+                      metric_id: 24
+                      patient_id: 1
+                      heart_rate: 60
+                      respiratory_rate: 13
+                      hrv:
+                        rmssd: 200
+                        baevsky_stress_index: 8
+                        sdnn: 20
+                        ans_index: 4
+                        sns_index: 3
+                        pns_index: 2
+                        morning_readiness: 3
+                      mental_index: 8
+                      notes: >-
+                        These are some extra notes you can add to the
+                        measurement.
+                      timestamp: '2022-07-14 13:03:38'
+                example-1:
+                  summary: Get patient by insurance number
+                  value:
+                    id: 2
+                    firstname: IntelliProve
+                    lastname: Demo
+                    insurance_nb: 654321-123.15
+                    gender: 1
+                    date_of_birth: '2021-04-01'
+                    last_measurement:
+                      metric_id: 26
+                      patient_id: 2
+                      heart_rate: 60
+                      respiratory_rate: 13
+                      hrv:
+                        rmssd: 200
+                        baevsky_stress_index: 8
+                        sdnn: 20
+                        ans_index: 4
+                        sns_index: 3
+                        pns_index: 2
+                        morning_readiness: 3
+                      mental_index: 8
+                      notes: >-
+                        These are some extra notes you can add to the
+                        measurement.
+                      timestamp: '2022-07-14 13:20:02'
+  /patients/all:
+    get:
+      tags:
+        - Patients
+      summary: Get patients with filter
+      description: >-
+        Get a list of patients that match the given filter, if provided. If the
+        filter is not given, then all patients are returned. When the
+        `customer_wide` property is not set (i.e. false), then only the patients
+        created with the current user account are provided.
+
+
+        The result will also hold information of the last measurement. If the
+        `last_measurement` is set to `null` then this indicates that no previous
+        measurements were found for that patient.
+
+
+        ## Output values
+
+
+        ### JSON Body
+
+
+        List of patient objects matching the filter:
+
+
+        *   `id`: int -> patient's unique index
+
+        *   `firstname`: string
+
+        *   `lastname`: string
+
+        *   `insurance_nb`: string
+
+        *   `gender`: enum, values \[Male = 1, Female = 2, X = 3\]
+
+        *   `date_of_birth`: date, format "yyyy-MM-dd"
+
+        *   `last_measurement`: : Metric API model (cfr. `GET /metrics/`) or
+        null
+            
+
+        ### Error codes
+
+
+        *   HTTP 400 -> *Invalid input parameters*
+
+        *   HTTP 401 -> *Token is missing*, *Token is invalid* (expired)
+
+        *   HTTP 500 -> *Action failed*
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+            Content-Length:
+              schema:
+                type: integer
+                example: '1282'
+            Server:
+              schema:
+                type: string
+                example: Werkzeug/1.0.1 Python/3.8.2
+            Date:
+              schema:
+                type: string
+                example: Thu, 27 May 2021 19:13:07 GMT
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Get all patients
+                  value:
+                    - id: 1
+                      firstname: IntelliProve
+                      lastname: Demo
+                      insurance_nb: 654321-123.12
+                      gender: 1
+                      date_of_birth: '2021-04-01'
+                      last_measurement:
+                        metric_id: 24
+                        patient_id: 1
+                        heart_rate: 60
+                        respiratory_rate: 13
+                        hrv:
+                          rmssd: 200
+                          baevsky_stress_index: 8
+                          sdnn: 20
+                          ans_index: 4
+                          sns_index: 3
+                          pns_index: 2
+                          morning_readiness: 3
+                        mental_index: 8
+                        notes: >-
+                          These are some extra notes you can add to the
+                          measurement.
+                        timestamp: '2022-07-14 13:03:38'
+                    - id: 2
+                      firstname: IntelliProve
+                      lastname: Demo2
+                      insurance_nb: 654321-123.15
+                      gender: 1
+                      date_of_birth: '2021-04-01'
+                      last_measurement:
+                        metric_id: 26
+                        patient_id: 2
+                        heart_rate: 60
+                        respiratory_rate: 13
+                        hrv:
+                          rmssd: 200
+                          baevsky_stress_index: 8
+                          sdnn: 20
+                          ans_index: 4
+                          sns_index: 3
+                          pns_index: 2
+                          morning_readiness: 3
+                        mental_index: 8
+                        notes: >-
+                          These are some extra notes you can add to the
+                          measurement.
+                        timestamp: '2022-07-14 13:20:02'
+                example-1:
+                  summary: Get patients with filter
+                  value:
+                    - id: 2
+                      firstname: IntelliProve
+                      lastname: Demo2
+                      insurance_nb: 654321-123.15
+                      gender: 1
+                      date_of_birth: '2021-04-01'
+                      last_measurement:
+                        metric_id: 26
+                        patient_id: 2
+                        heart_rate: 60
+                        respiratory_rate: 13
+                        hrv:
+                          rmssd: 200
+                          baevsky_stress_index: 8
+                          sdnn: 20
+                          ans_index: 4
+                          sns_index: 3
+                          pns_index: 2
+                          morning_readiness: 3
+                        mental_index: 8
+                        notes: >-
+                          These are some extra notes you can add to the
+                          measurement.
+                        timestamp: '2022-07-14 13:20:02'
+  /videos/process:
+    post:
+      tags:
+        - Videos
+      summary: Process a video
+      description: >-
+        Use this route to upload a video of the patients face and let the
+        IntelliProve algorithm extract the metrics from it. The results are sent
+        back synchronously in the API response (JSON format).
+
+
+        The video should be added to the request using a multipart/form-data
+        file.
+
+
+        > The response time is tightly coupled with the video size. Therefore,
+        we recommend that the video size should not exceed 100Mb.
+
+
+        ## Output values
+
+
+        ### JSON Body
+
+
+        *   `metric_id`: int -> metric's unique index
+
+        *   `patient_id`: int -> duplicate of patient's unique index
+
+        *   `heart_rate`: int
+
+        *   `respiratory_rate`: int
+
+        *   `hrv`
+            *   `rmssd`: int
+            *   `baevsky_stress_index`: int
+            *   `sdnn`: int
+            *   `ans_index`: float
+            *   `sns_index`: float
+            *   `pns_index`: float
+            *   `morning_readiness`: float
+        *   `mental_index`: float
+            
+
+        ### Error codes
+
+
+        *   HTTP 400 -> *Invalid input parameters*
+
+        *   HTTP 401 -> *Token is missing*, *Token is invalid* (expired)
+
+        *   HTTP 500 -> *Action failed*
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                video_file:
+                  type: string
+                  format: binary
+      parameters:
+        - name: patient-id
+          in: query
+          schema:
+            type: integer
+          description: Unique ID of the patient
+          example: '16'
+        - name: export-report
+          in: query
+          schema:
+            type: string
+          description: >-
+            Indicate wether a server-side report should be created. False by
+            default.
+          example: 'False'
+        - name: save-blob
+          in: query
+          schema:
+            type: string
+          description: >-
+            Indicate wether the video should be stored in the blob storage.
+            False by default.
+          example: 'False'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                metric_id: 2241
+                heart_rate: 70
+                respiratory_rate: 13
+                hrv:
+                  rmssd: 40
+                  baevsky_stress_index: 70
+                  sdnn: 120
+                  ans_index: 3.2
+                  sns_index: 2.1
+                  pns_index: 1.8
+                  morning_readiness: 7.6
+                mental_index: 8.5
+  /videos/quality_check_video:
+    post:
+      tags:
+        - Videos
+      summary: video-based quality check
+      description: >-
+        Use this route to upload a video of the patient's face and let the
+        IntelliProve algorithm determine if the quality is sufficient. The
+        results are sent back synchronously in the API response (JSON format).
+
+
+        The video should be added to the request using a multipart/form-data
+        file.
+
+
+        > The response time is tightly coupled with the video size. Therefore,
+        we recommend that the video size should not exceed 100Mb.
+
+
+        ## Output values
+
+
+        ### JSON Body
+
+
+        **If quality OK:**
+
+
+        \* Returns following json string: "Go ahead with the measurement,
+        conditions look fine!
+
+
+        **If quality NOK:**
+
+
+        \* returns json string with keys:
+
+
+        \* `error`: str -> Description of error, e.g. "Face is too far from
+        camera to perform measurement."\*  
+
+        \* `errorCode`: int  
+
+        \* 1: Resolution error: resolution of the video is too low.  
+
+        \* 2: Face detection error: Face is not detected. This can have several
+        reasons, such as the face going out of frame, or being covered too
+        much.  
+
+        \* 3: Face illumination error: illumination of the face is not
+        sufficient  
+
+        \* 4: Distance error: face is too far from the camera.  
+
+        \* `type`: str -> type of quality error
+
+
+        ### Error codes
+
+
+        \* HTTP 400 -> _Invalid input parameters_  
+
+        \* HTTP 401 -> _Token is missing_, _Token is invalid_ (expired)  
+
+        \* HTTP 500 -> _Action failed_
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                video_file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /videos/quality_check_frames:
+    post:
+      tags:
+        - Videos
+      summary: frame-based quality check
+      description: >-
+        Use this route to upload a list of frames of the patient's face and let
+        the IntelliProve algorithm determine if the quality is sufficient. The
+        results are sent back synchronously in the API response (JSON format).
+
+
+        The frames should be added to the request using a multipart/form-data
+        file.
+
+
+        > The response time is tightly coupled with the video size. Therefore,
+        we recommend that the video size should not exceed 100Mb.
+
+
+        ## Output values
+
+
+        ### JSON Body
+
+
+        **If quality OK:**
+
+
+        \* Returns following json string: "Go ahead with the measurement,
+        conditions look fine!
+
+
+        **If quality NOK:**
+
+
+        \* `error`: str -> Description of error, e.g. "Face is too far from
+        camera to perform measurement."\*  
+
+        \* `errorCode`: int  
+
+        \* 1: Resolution error: resolution of the video is too low.  
+
+        \* 2: Face detection error: Face is not detected. This can have several
+        reasons, such as the face going out of frame, or being covered too
+        much.  
+
+        \* 3: Face illumination error: illumination of the face is not
+        sufficient  
+
+        \* 4: Distance error: face is too far from the camera.  
+
+        \* `type`: str -> type of quality error
+
+
+        ### Error codes
+
+
+        \* HTTP 400 -> _Invalid input parameters_  
+
+        \* HTTP 401 -> _Token is missing_, _Token is invalid_ (expired)  
+
+        \* HTTP 500 -> _Action failed_
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                frames:
+                  type: string
+                  format: binary
+      parameters:
+        - name: email
+          in: query
+          schema:
+            type: string
+          example: test1@intelliprove.com
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /login:
+    put:
+      tags:
+        - default
+      summary: Login to API
+      description: >-
+        Make a **PUT** call to the `/login` route and use Basic Authentication
+        to provide the user credentials. If the valid username and password are
+        provided, the Cloud will generate a JWT token with an expiration time of
+        24h. The token is returned as the `token` property in the JSON body of
+        the HTTP Response.
+
+
+        > If a token is expired, you should repeat the login process and request
+        a new token.
+
+
+        ## Output values
+
+        ### JSON Body
+
+        * `token`: string -> JWT token
+
+
+        ### Error codes
+
+        * HTTP 401 -> *Could not verify* (Authentication type not correct, no
+        username and password provided)
+
+        * HTTP 401 -> *Invalid username or password*
+
+        * HTTP 500 -> *Action failed*
+      requestBody:
+        content: {}
+      security:
+        - basicAuth: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+            Content-Length:
+              schema:
+                type: integer
+                example: '134'
+            Server:
+              schema:
+                type: string
+                example: Werkzeug/1.0.1 Python/3.8.2
+            Date:
+              schema:
+                type: string
+                example: Wed, 05 May 2021 20:04:03 GMT
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                token: >-
+                  eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo1LCJleHAiOjE2MjAzMzE0NDN9.VLT_r-pvEhoLMZkaVb0bnaiQIQBrOvMoIjmD6TfNf6Q
